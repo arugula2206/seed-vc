@@ -6,6 +6,8 @@ import soundfile as sf
 import time
 from modules.commons import str2bool
 
+import glob
+
 # Set up device and torch configurations
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -77,38 +79,77 @@ def convert_voice_v2(source_audio_path, target_audio_path, args):
 
 
 def main(args):
-    # Create output directory if it doesn't exist
-    os.makedirs(args.output, exist_ok=True)
-
-    start_time = time.time()
-    converted_audio = convert_voice_v2(args.source, args.target, args)
-    end_time = time.time()
-
-    if converted_audio is None:
-        print("Error: Failed to convert voice")
+    # --- 1. 話者ディレクトリを自動でリストアップ ---
+    parent_target_dir = args.target
+    if not os.path.isdir(parent_target_dir):
+        print(f"エラー: --target には話者ディレクトリが含まれる親ディレクトリを指定してください。例: ./dataset/ITA-corpus")
         return
 
-    # Save the converted audio
-    source_name = os.path.basename(args.source).split(".")[0]
-    target_name = os.path.basename(args.target).split(".")[0]
+    try:
+        speaker_dirs = [d.path for d in os.scandir(parent_target_dir) if d.is_dir()]
+    except FileNotFoundError:
+        print(f"エラー: ディレクトリが見つかりません: {parent_target_dir}")
+        return
 
-    # Create a descriptive filename
-    # .pthファイル名からモデルの識別子を取得
-    model_identifier = "default"
-    if args.cfm_checkpoint_path:
-        # パスからファイル名を取得し、拡張子 (.pth) を取り除く
-        model_identifier = os.path.splitext(os.path.basename(args.cfm_checkpoint_path))[0]
-        print(f"Using CFM model: {model_identifier}")
+    if not speaker_dirs:
+        print(f"エラー: {parent_target_dir} 内に話者のサブディレクトリが見つかりません。")
+        return
 
-    # モデル識別子を含めて、より分かりやすいファイル名を作成
-    filename = f"vc_v2_{source_name}_to_{target_name}_by_{model_identifier}.wav"
+    print(f"{len(speaker_dirs)} 人の話者を検出しました。一括処理を開始します...")
+    print("モデルを読み込みます（この処理は一度だけです）...")
 
-    output_path = os.path.join(args.output, filename)
-    save_sr, converted_audio = converted_audio
-    sf.write(output_path, converted_audio, save_sr)
+    # --- 2. 話者ごとにループ ---
+    for speaker_dir in speaker_dirs:
+        speaker_name = os.path.basename(speaker_dir)
+        
+        # この話者用の出力ディレクトリパスを定義
+        speaker_output_dir = os.path.join(args.output, speaker_name)
+        
+        # 出力ディレクトリが既に存在する場合、この話者の処理をスキップ
+        if os.path.isdir(speaker_output_dir):
+            print(f"\n話者 '{speaker_name}' の出力フォルダは既に存在するため、スキップします。")
+            continue # 次の話者へ
 
-    print(f"Voice conversion completed in {end_time - start_time:.2f} seconds")
-    print(f"Output saved to: {output_path}")
+        print(f"\n=============================================")
+        print(f"話者: {speaker_name} の処理を開始")
+        print(f"=============================================")
+
+        # 出力ディレクトリを作成
+        os.makedirs(speaker_output_dir, exist_ok=True)
+
+        # 話者ディレクトリ内の.wavファイルをすべて取得
+        target_files = glob.glob(os.path.join(speaker_dir, '*.wav'))
+        if not target_files:
+            print(f"{speaker_name} のディレクトリに .wav ファイルが見つからないため、スキップします。")
+            continue
+
+        # 参照音声ごとにループ
+        for target_path in target_files:
+            print(f"--- 参照音声: {os.path.basename(target_path)} を処理中...")
+            start_time = time.time()
+            
+            converted_audio = convert_voice_v2(args.source, target_path, args)
+            end_time = time.time()
+
+            if converted_audio is None:
+                print("エラー: 音声変換に失敗しました。")
+                continue
+
+            # --- 3. ファイルを保存 ---
+            model_identifier = "default"
+            if args.cfm_checkpoint_path:
+                model_identifier = os.path.splitext(os.path.basename(args.cfm_checkpoint_path))[0]
+            
+            source_name = os.path.splitext(os.path.basename(args.source))[0]
+            target_wav_name = os.path.splitext(os.path.basename(target_path))[0]
+            filename = f"vc_v2_{source_name}_to_{target_wav_name}_by_{model_identifier}.wav"
+            output_path = os.path.join(speaker_output_dir, filename)
+
+            save_sr, audio_data = converted_audio
+            sf.write(output_path, audio_data, save_sr)
+            print(f"変換完了 ({end_time - start_time:.2f}秒), 保存先: {output_path}")
+
+    print("\nすべての話者の処理が完了しました。")
 
 
 if __name__ == "__main__":
@@ -116,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument("--source", type=str, required=True,
                         help="Path to source audio file")
     parser.add_argument("--target", type=str, required=True,
-                        help="Path to target/reference audio file")
+                        help="Path to target/reference audio file OR a directory containing .wav files")
     parser.add_argument("--output", type=str, default="./output",
                         help="Output directory for converted audio")
     parser.add_argument("--diffusion-steps", type=int, default=30,

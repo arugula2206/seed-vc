@@ -23,6 +23,9 @@ from accelerate import Accelerator
 from accelerate import DistributedDataParallelKwargs
 from accelerate.logging import get_logger
 
+# accelerateでログが出力されないので、tensorboardを使う
+from torch.utils.tensorboard import SummaryWriter
+
 class Trainer:
     def __init__(
             self,
@@ -61,6 +64,12 @@ class Trainer:
             mixed_precision=mixed_precision
         )
         self.device = self.accelerator.device
+
+        # loggerの準備
+        if self.accelerator.is_main_process:
+            self.writer = SummaryWriter(log_dir=self.log_dir)
+        else:
+            self.writer = None
 
         # Initialize training parameters
         self._init_dataloader(
@@ -267,6 +276,13 @@ class Trainer:
                 print("Epoch %d, Iteration %d, Loss: %.4f, Loss AR: %.4f, Loss CFM: %.4f, Grad Norm: %.4f, LR: %.6f"
                       % (epoch, i, loss.item(), loss_ar.item(), loss_cfm.item(), grad_norm_g, cur_lr))
 
+                if self.writer is not None:
+                    self.writer.add_scalar("loss/total", loss.item(), self.iters)
+                    self.writer.add_scalar("loss/ar", loss_ar.item(), self.iters)
+                    self.writer.add_scalar("loss/cfm", loss_cfm.item(), self.iters)
+                    self.writer.add_scalar("meta/grad_norm", grad_norm_g, self.iters)
+                    self.writer.add_scalar("meta/lr", cur_lr, self.iters)
+
     def _save_checkpoint(self, epoch):
         """Save model checkpoint"""
         print('Saving checkpoint...')
@@ -284,7 +300,8 @@ class Trainer:
             print(f"Saved AR checkpoint to {save_path}")
 
             # Find all checkpoints and remove old ones
-            self._remove_old_checkpoints("AR_epoch_*_step_*.pth", max_keep=1)
+            # 最適な学習済みのチェックポイントを探すため、いったん無効化
+            # self._remove_old_checkpoints("AR_epoch_*_step_*.pth", max_keep=1)
         if self.train_cfm:
             state = {
                 'net': {
@@ -299,7 +316,8 @@ class Trainer:
             print(f"Saved CFM checkpoint to {save_path}")
 
             # Find all checkpoints and remove old ones
-            self._remove_old_checkpoints("CFM_epoch_*_step_*.pth", max_keep=1)
+            # 最適な学習済みのチェックポイントを探すため、いったん無効化
+            # self._remove_old_checkpoints("CFM_epoch_*_step_*.pth", max_keep=1)
     def _remove_old_checkpoints(self, name_pattern, max_keep=1):
         """Remove old checkpoints"""
         checkpoints = glob.glob(os.path.join(self.log_dir, name_pattern))
