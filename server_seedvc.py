@@ -109,12 +109,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="発話単位の声質変換サーバー (seed-vc)")
     
     # --- seed-vc用引数 ---
-    parser.add_argument("--config", type=str, default="configs/v2/vc_wrapper.yaml", help="seed-vcのラッパー設定ファイル")
-    parser.add_argument("--target", type=str, required=True, help="目標話者の参照音声ファイルへのパス")
-    
+    parser.add_argument("--config", type=str, default="./logs/ITA_finetune_1/vc_wrapper.yaml", help="seed-vcのラッパー設定ファイル")
+    parser.add_argument("--target", type=str, default="dataset/ITA-corpus/zundamon/recitation146.wav", help="目標話者の参照音声ファイルへのパス")
+
     # ▼▼▼ 変更点: required=True を削除し、default=None を追加 ▼▼▼
     parser.add_argument("--ar_checkpoint", type=str, default=None, help="（任意）ARモデルのチェックポイントファイルへのパス")
-    parser.add_argument("--cfm_checkpoint", type=str, default="./runs/ITA_finetune_1/CFM_epoch_00129_step_21000.pth", help="（任意）CFMモデルのチェックポイントファイルへのパス")
+    parser.add_argument("--cfm_checkpoint", type=str, default="./logs/ITA_finetune_1/CFM_epoch_00129_step_21000.pth", help="（任意）CFMモデルのチェックポイントファイルへのパス")
     # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
     
     # --- 変換パラメータ ---
