@@ -62,19 +62,12 @@ def command_listener():
             time.sleep(0.1)
     else: # Linux, macOSの場合
         import select
-        import tty
-        import termios
-        old_settings = termios.tcgetattr(sys.stdin)
-        try:
-            tty.setcbreak(sys.stdin.fileno())
-            while not stop_event.is_set():
-                if select.select([sys.stdin], [], [], 0.1)[0]:
-                    char = sys.stdin.read(1)
-                    if char.lower() == 'c':
-                        print("\n[INFO] 話者変更リクエストを受け付けました。")
-                        change_speaker_request.set()
-        finally:
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        while not stop_event.is_set():
+            if select.select([sys.stdin], [], [], 0.1)[0]:
+                char = sys.stdin.read(1)
+                if char.lower() == 'c':
+                    print("\n[INFO] 話者変更リクエストを受け付けました。")
+                    change_speaker_request.set()
 
 def select_speaker():
     """話者を選択するUIを表示し、選択された話者名を返す"""
@@ -96,7 +89,14 @@ def select_speaker():
     return speaker_name
 
 def main():
+    if os.name != 'nt': # Windowsの場合
+        import tty
+        import termios
+        old_settings = termios.tcgetattr(sys.stdin)
     try:
+        if os.name != 'nt': # Windows以外の場合
+            tty.setraw(sys.stdin.fileno()) # ノンブロッキング入力を有効化
+        
         input_device_id = find_device_id(INPUT_DEVICE_NAME, 'input')
         output_device_id = find_device_id(OUTPUT_DEVICE_NAME, 'output')
         current_speaker = select_speaker()
@@ -180,6 +180,9 @@ def main():
     except Exception as e:
         print(f"\n[エラー] 予期せぬエラーが発生しました: {e}")
     finally:
+        if os.name != 'nt': # Windows以外の場合
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+            print("ノンブロッキング入力を終了しました。")
         stop_event.set()
         print("クライアントを終了しました。")
 
