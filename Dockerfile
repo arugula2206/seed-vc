@@ -1,66 +1,36 @@
-# ベースイメージとしてPyTorch公式イメージを指定
-# -develタグはビルドツールが含まれているため、このまま使用します
-FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel
+# ベースイメージとしてNVIDIA公式のCUDA 12.4対応イメージを使用
+# 開発に必要なツールキットが含まれるdevel版を選択
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
 
-# 環境変数の設定
+# APTパッケージインストール時の対話を無効化
 ENV DEBIAN_FRONTEND=noninteractive
-ARG CONDA_ENV_NAME=speech_env
 
-# --- 修正箇所 1: 必要なシステムライブラリの集約と追加 ---
-# ビルドツール(build-essential)とPython3.10で分離されたdistutils(python3-distutils)を追加
+# システムの依存関係をインストール
+# Python、Git、音声処理用のffmpeg、Soundfileライブラリ用のlibsndfile1をインストール
 RUN apt-get update && apt-get install -y \
-    sox \
-    libsox-dev \
-    libsndfile1 \
-    ffmpeg \
+    python3.10 \
+    python3-pip \
     git \
-    build-essential \
-    python3-distutils \
+    ffmpeg \
+    libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
-# ベースのconda環境ではなく、専用の環境を作成して依存関係を分離
-RUN conda create -n ${CONDA_ENV_NAME} python=3.10 -y
+# pythonコマンドでpython3が実行されるようにシンボリックリンクを作成
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# Conda環境をアクティブにするための設定
-RUN conda init bash
-SHELL ["conda", "run", "-n", "speech_env", "/bin/bash", "-c"]
-RUN echo "conda activate ${CONDA_ENV_NAME}" >> ~/.bashrc
-
-
-# --- ライブラリのインストール ---
-
-# 1. CondaでMFAと、その日本語サポートパッケージをインストール
-RUN conda install -c conda-forge montreal-forced-aligner spacy sudachipy sudachidict-core -y
-
-# 2. MFAがインストールした可能性のあるPyTorchを強制的にアンインストール
-RUN pip uninstall -y torch torchaudio torchvision
-
-# 3. 安定したバージョンのPyTorchをインストール (変更なし)
-RUN pip install torch==1.13.1+cu117 torchaudio==0.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
-
-# 4. ESPnetと関連ライブラリをインストール (変更なし)
-RUN pip install "espnet[recipes]"
-RUN pip install espnet_model_zoo
-RUN pip install sparc
-RUN pip install "transformers==4.25.1" sentencepiece
-RUN pip install torchcrepe
-
-# 5. 依存関係の競合を解決 (変更なし)
-RUN pip install "numpy<1.24" "importlib-metadata<5.0"
-
-# --- 修正箇所 2: FastSpeech2の依存ライブラリをインストール ---
-# 修正したrequirements.txtをコピーしてインストール
-COPY./FastSpeech2_P2E/requirements.txt /app/FastSpeech2_P2E/requirements.txt
-RUN pip install --no-cache-dir -r /app/FastSpeech2_P2E/requirements.txt
-
-
-# --- モデルのダウンロード ---
-# MFAの日本語モデルをダウンロード
-RUN mfa model download dictionary japanese_mfa
-RUN mfa model download acoustic japanese_mfa
-
-# 作業ディレクトリの設定
+# 作業ディレクトリを設定
 WORKDIR /app
 
-# コンテナ起動時のデフォルトコマンド
-CMD [ "bash" ]
+COPY requirements.txt .
+
+# PyTorchをCUDA 12.1対応版でインストール
+# requirements.txtに記載のtorch==2.2.2はCUDA 12.1と互換性があります。
+# ホストのCUDA Driverが12.4であれば問題なく動作します。
+RUN pip install torch==2.2.2 torchaudio==2.2.2 torchvision==0.17.2 --index-url https://download.pytorch.org/whl/cu121
+
+# requirements.txtからPyTorch関連の記述を削除し、残りのパッケージをインストール
+# これにより、CPU版のPyTorchが意図せずインストールされるのを防ぎます。
+RUN sed -i '/^torch/d' requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt
+
+CMD ["/bin/bash"]
