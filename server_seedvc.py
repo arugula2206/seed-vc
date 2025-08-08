@@ -32,7 +32,7 @@ TARGET_SPEAKERS = {
     "zundamon": "./dataset/ITA-corpus/zundamon/recitation146.wav",
     "methane": "./dataset/ITA-corpus/methane/recitation105.wav",
     "sora": "./dataset/ITA-corpus/sora/recitation032.wav",
-    "itako": "./dataset/ITA-corpus/itako/recitation001.wav"
+    "itako": "./dataset/ITA-corpus/itako/recitation175.wav",
 }
 # --- ▲▲▲▲▲▲▲▲▲▲▲▲▲ ---
 
